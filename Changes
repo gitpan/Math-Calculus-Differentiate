@@ -1,5 +1,10 @@
 Revision history for Perl module Math::Calculus::Differentiate
 ==============================================================
+VERSION 0.3
+* Released to CPAN 5th January 2004
+* Abstracted much code out to Math::Calculus::Expression,
+  which this module now inherits.
+* Fixed an expression parser bug.
 
 VERSION 0.2.1
 * Released to CPAN on 4th September 2004.
@@ -21,4 +26,3 @@ VERSION 0.2
 VERSION 0.1
 * Released informally, badly written, never made it to CPAN,
   eventually scrapped completely.
-

@@ -6,8 +6,11 @@
 # ########################################################################################
 
 package Math::Calculus::Differentiate;
+use 5.006;
+use Math::Calculus::Expression;
 use strict;
-our $VERSION = '0.2.1';
+our $VERSION = '0.3';
+our @ISA = qw/Math::Calculus::Expression/;
 
 =head1 NAME
 
@@ -49,11 +52,6 @@ None by default.
 
 =head1 METHODS
 
-=cut
-
-# Constructor
-# ###########
-
 =item new
 
   $exp = Math::Calculus::Differentiate->new;
@@ -61,53 +59,12 @@ None by default.
 Creates a new instance of the differentiation engine, which can hold an individual
 expression.
 
-=cut
-
-sub new {
-	# Get invocant.
-	my $invocant = shift;
-	
-	# Create object.
-	my $self = {
-		traceback	=> '',
-		error		=> '',
-		expression	=> 0,
-		variables	=> [],
-	};
-	return bless $self, $invocant;
-}
-
-
-# Add variable.
-# #############
-
 =item addVariable
 
   $exp->addVariable('x');
 
 Sets a certain named value in the expression as being a variable. A named value must be
 an alphabetic chracter.
-
-=cut
-
-sub addVariable {
-	# Get invocant and parameters.
-	my ($self, $var) = @_;
-	
-	# Provided the variable is just one character and we don't already have it...
-	unless (length($var) != 1 || grep { $_ eq $var } @{$self->{'variables'}}) {
-		$self->{'variables'}->[@{$self->{'variables'}}] = $var;
-		$self->{'error'} = '';
-		return 1;
-	} else {
-		$self->{'error'} = 'Invalid variable or variable already added.';
-		return undef;
-	}
-}
-
-
-# Set Expression
-# ##############
 
 =item setExpression
 
@@ -121,35 +78,6 @@ If you require control of precedence, use brackets; bracketed expressions will a
 evaluated first, as you would normally expect. The module follows the BODMAS precedence
 convention. Returns undef on failure and a true value on success.
 
-=cut
-
-sub setExpression {
-	# Get invocant and parameters.
-	my ($self, $expr) = @_;
-	
-	# Clear up the expression.
-	$expr =~ s/\s//g;
-	1 while $expr =~ s/--/+/g
-	     || $expr =~ s/\+-|-\+/-/g
-	     || $expr =~ s/([+\-*\/\^])\+/$1/g
-	     || $expr =~ s/^\+//g;
-	
-	# Build expression tree.
-	$self->{'error'} = $self->{'traceback'} = undef;
-	$self->{'expression'} = $self->buildTree($expr);
-	
-	# Return depending on whether there was an error.
-	if ($self->{'error'}) {
-		return undef;
-	} else {
-		return 1;
-	}
-}
-
-
-# Get Expression
-# ##############
-
 =item getExpression
 
   $expr = $exp->getExpression;
@@ -157,22 +85,6 @@ sub setExpression {
 Returns a textaul, human readable representation of the expression that is being stored.
 
 =cut
-
-sub getExpression {
-	# Get invocant.
-	my $self = shift;
-	
-	# Walk expression tree and generate something to display.
-	$self->{'error'} = '';
-	my $text = $self->prettyPrint($self->{'expression'});
-	
-	# If there was an error, return nothing.
-	if ($self->{'error'}) {
-		return undef;
-	} else {
-		return $text;
-	}
-}
 
 
 # Differentiate.
@@ -209,9 +121,6 @@ sub differentiate {
 }
 
 
-# Simplify.
-# #########
-
 =item simplify
 
   $exp->simplify;
@@ -222,38 +131,6 @@ form, and this will affect the readability of output from getExpression and the 
 of future calls to differentiate if you are intending to obtain higher derivatives. Returns
 undef on failure and a true value on success.
 
-=cut
-
-sub simplify {
-	# Get invocant.
-	my ($self) = @_;
-	
-	# Clear error.
-	$self->{'error'} = undef;
-	
-	# Simplify.
-	eval {
-		$self->{'expression'} = $self->recSimplify($self->{'expression'}, undef);
-	};
-	
-	# We may have boiled it all down to a numerical constant...
-	my $const = $self->numericEvaluation($self->{'expression'});
-	if (defined($const)) {
-		$self->{'expression'} = $const;
-	}
-	
-	# Return an appropriate value (or lack thereof...).
-	if ($self->{'error'}) {
-		return undef;
-	} else {
-		return 1;
-	}
-}
-
-
-# Get traceback.
-# ##############
-
 =item getTraceback
 
   $exp->getTraceback;
@@ -262,16 +139,6 @@ When setExpression and differentiate are called, a traceback is generated to des
 what these functions did. If an error occurs, this traceback can be extremely useful
 in helping track down the source of the error.
 
-=cut
-
-sub getTraceback {
-	return $_[0]->{'traceback'};
-}
-
-
-# Get error.
-# ##########
-
 =item getError
 
   $exp->getError;
@@ -279,13 +146,6 @@ sub getTraceback {
 When any method other than getTraceback is called, the error message stored is cleared, and
 then any errors that occur during the execution of the method are stored. If failure occurs,
 call this method to get a textual representation of the error.
-
-=cut
-
-sub getError {
-	return $_[0]->{'error'};
-}
-
 
 =head1 SEE ALSO
 
@@ -311,153 +171,6 @@ at your option, any later version of Perl 5 you may have available.
 # ########################################################################################
 # Private Methods
 # ########################################################################################
-
-
-# Build tree recursively explores the passed expression and generates a tree for it.
-# The trees take a structure of an operation (which is +, -, *, /, ^, sin, cos, tan,
-# sec, cosec, cot, sinh, cosh, tanh, sech, cosech, coth, asin, acos, atan, asinh,
-# acosh, atanh, exp or ln) and two operands, which are either constants or references
-# to other trees.
-# ########################################################################################
-sub buildTree {
-	# Get invocant and expression.
-	my ($self, $expr) = @_;
-	
-	# Store what we're parsing in the traceback.
-	$self->{'traceback'} .= "Parsing $expr\n";
-	
-	# If it's a constant or single variable...
-	if ($expr =~ /^ \(* (\-? ( (\d+(\.\d+)?) | [A-Za-z] )) \)* $/x) {
-		# No tree to build; just return the expression.
-		return $1;
-	
-	# Otherwise it could be a function.
-	} elsif ($expr =~ /^ \(* (\-?) (a?sinh?|a?cosh?|a?tanh?|sech?|cosech?|coth?|ln|exp) \((.+)\) \)* $/x) {
-		# Return single operand parse tree.
-		return {
-			operation	=> "$1$2",
-			operand1	=> $self->buildTree($3),
-			operand2	=> undef
-		};
-	} else {
-		# Otherwise full analysis needed. Analyse expressiona and try to find a split point.
-		my $error = undef;
-		my $bestSplitOp = '';
-		my $splitOpPos = 0;
-		my $bracketDepth = 0;
-		while (!$bestSplitOp && !$error) {
-			# Cycle through all characters.
-			my $curChar = 1;
-			my $bracketDepthHitZero = 0;
-			my $lastCharOp = 1;
-			foreach my $char (split //, $expr) {
-				# Maintain bracket depth.
-				if ($char eq '(') {
-					$bracketDepth ++;
-				} elsif ($char eq ')') {
-					$bracketDepth --;
-				
-				# Do we have a split point?
-				} elsif ($curChar > 1 && $bracketDepth == 0 && $char =~ /[\^*\/+\-]/ &&
-      	                     ($self->higherPrecedence($bestSplitOp, $char) || !$bestSplitOp)
-				         && !$lastCharOp) {
-					$splitOpPos = $curChar;
-					$bestSplitOp = $char;
-					
-				}
-				
-				# If bracket depth is 0 and it's not the last character, record it happened.
-				if ($bracketDepth == 0 && $curChar != length($expr)) {
-					$bracketDepthHitZero = 1;
-				}
-				
-				# If bracket depth is negative, we've got an error.
-				if ($bracketDepth < 0)
-				{
-					$error = "Brackets not properly nested.";
-				}
-				
-				# Maintain flag for if this character was an operator.
-				$lastCharOp = $char =~ /[\^*\/+\-]/ ? 1 : 0;
-				
-				# Increment character counter.
-				$curChar ++;
-			}
-			
-			# If we have not found a split point, and the bracket depth hit 0, we have brackets
-			# around all of the expression.
-			if (!$error && !$bestSplitOp) {
-				if (!$bracketDepthHitZero) {
-					$expr =~ s/^\((.+)\)$/$1/;
-				} else {
-					$error = 'Could not split expression ' . $expr;
-				}
-			}
-		}
-		
-		# If there wasn't an error, split, get operand and parse each subexpression.
-		unless ($error) {
-			my $operand1 = substr($expr, 0, $splitOpPos - 1);
-			my $operand2 = substr($expr, $splitOpPos);
-			if ($operand2 ne '') {
-				return {
-					operation	=> $bestSplitOp,
-					operand1	=> $self->buildTree($operand1),
-					operand2	=> $self->buildTree($operand2)
-				};
-			} else {
-				$error = 'Could not split expression ' . $expr;
-			}
-		}
-		
-		# If we've got an error, store it and return failure.
-		if ($error) {
-			$self->{'error'} = $error;
-			return undef;
-		}
- 	}
-	
-	# If we get here, something weird happened.
-	$self->{'error'} = "Unknown error parsing $expr.";
-	return undef;
-}
-
-
-# Pretty print takes an expression tree and returns a text representation for it.
-# #######################################################################################
-sub prettyPrint {
-	# Get invocant and tree.
-	my ($self, $tree, $lastOp) = @_;
-	
-	# See if the tree actually is a tree. If not, it's a value and just return it.
-	unless (ref $tree) {
-		return $tree;
-	} else {
-		# See how many operands we take.
-		my $curOp = $tree->{'operation'};
-		if ($curOp =~ /^[\^\/*\-+]$/) {
-			# Dual operand. Look at last op to see if we need brackets.
-			my $brackets = ($curOp eq '^' && $lastOp =~ /[\/*+\-]/ ||
-			                $curOp =~ /[\/*]/ && $lastOp =~ /[*+\-]/ ||
-			                $curOp =~ /[+\-]/ && $lastOp =~ /[+\-]/ ||
-                                  !(defined($lastOp)) || $lastOp eq '(')
-					   ? 0 : 1;
-			
-			# Pretty-print each operand, adding spaces around + and - ops.
-			my $pretty = '';
-			$pretty .= '(' if $brackets;
-			$pretty .= $self->prettyPrint($tree->{'operand1'}, $curOp);
-			$pretty .= ($curOp =~ /[+\-]/ ? ' ' : '') . $curOp . ($curOp =~ /[+\-]/ ? ' ' : '');
-			$pretty .= $self->prettyPrint($tree->{'operand2'}, $curOp);
-			$pretty .= ')' if $brackets;
-			return $pretty;
-		} else {
-			# Single operand, e.g. function.
-			return $curOp . '(' . $self->prettyPrint($tree->{'operand1'}, '(') . ')';
-		}
-	}
-}
-
 
 # Differentiate Tree explores the current expression tree, recursively differentiating
 # the branches of the tree.
@@ -1195,292 +908,7 @@ sub differentiateTree {
 	}
 }
 
-
-# recSimplify recursively walks a tree and simplifies the branches, then the current
-# node.
-# ########################################################################################
-sub recSimplify {
-	# Get invocant, variable and tree.
-	my ($self, $tree) = @_;
-	
-	# If it's just a node, return it. We can't do a great deal with nodes.
-	return $tree unless ref $tree;
-	
-	# Otherwise, simplify each operand before we go any further.
-	my $left = $self->recSimplify($tree->{'operand1'});
-	my $right = $self->recSimplify($tree->{'operand2'});
-
-	## CONSTANT EVALUATION
-	
-	# Get any available numeric evaluations of the left and right branches.
-	my $leftval = $self->numericEvaluation($left);
-	my $rightval = $self->numericEvaluation($right);
-	
-	# If they have a numeric evaluation, assign them to the actual values.
-	$left = $leftval if defined($leftval);
-	$right = $rightval if defined($rightval);
-	
-	## NULL OPERATORS
-	
-	# 0 + x = x + 0 = x
-	if ($tree->{'operation'} eq '+' && (!(ref $left) && $left eq '0')) {
-		return $right;
-	}
-	if ($tree->{'operation'} eq '+' && (!(ref $right) && $right eq '0')) {
-		return $left;
-	}
-	
-	# x - 0 = x
-	if ($tree->{'operation'} eq '-' && (!(ref $right) && $right eq '0')) {
-		return $left;
-	}
-	
-	# 1 * x = x * 1 = x
-	if ($tree->{'operation'} eq '*' && (!(ref $left) && $left eq '1')) {
-		return $right;
-	}
-	if ($tree->{'operation'} eq '*' && (!(ref $right) && $right eq '1')) {
-		return $left;
-	}
-	
-	# x / 1 = x
-	if ($tree->{'operation'} eq '/' && (!(ref $right) && $right eq '1')) {
-		return $left;
-	}
-	
-	# x ^ 1 = x
-	if ($tree->{'operation'} eq '^' && (!(ref $right) && $right eq '1')) {
-		return $left;
-	}
-	
-	## EFFECTS OF ZERO
-	
-	# x ^ 0 = 1
-	if ($tree->{'operation'} eq '^' && (!(ref $right) && $right eq '0')) {
-		return 1;
-	}
-	
-	# 0 * x = x * 0 = 0
-	if ($tree->{'operation'} eq '*' && (!(ref $left) && $left eq '0')) {
-		return 0;
-	}
-	if ($tree->{'operation'} eq '*' && (!(ref $right) && $right eq '0')) {
-		return 0;
-	}
-	
-	# 0 / x = 0
-	if ($tree->{'operation'} eq '/' && (!(ref $left) && $left eq '0')) {
-		return 0;
-	}
-	
-	## DIVISION OF AN EXPRESSION BY ITSELF
-	
-	# x / x = 1
-	if ($tree->{'operation'} eq '/' && $self->isIdentical($left, $right)) {
-		return 1;
-	}
-	
-	## SUBTRACTION OF AN EXPRESSION FROM ITSELF
-	
-	# x / x = 1
-	if ($tree->{'operation'} eq '-' && $self->isIdentical($left, $right)) {
-		return 0;
-	}
-	
-	## DEEP NUMERICAL CONSTANT COMBINATION
-	
-	# n * (m * x) = (o * x) where o = nm
-	if ($tree->{'operation'} eq '*' && ref($right) && $right->{'operation'} eq '*' &&
-	    !(ref($left)) && $left =~ /^-?\d+(\.\d+)?$/ && $right->{'operand1'} =~ /^-?\d+(\.\d+)?$/) {
-		return {
-			operation	=> '*',
-			operand1	=> ($left * $right->{'operand1'}),
-			operand2	=> $right->{'operand2'}
-		};
-	
-	# n * (x * m) = (o * x) where o = nm
-	} elsif ($tree->{'operation'} eq '*' && ref($right) && $right->{'operation'} eq '*' &&
-	    !(ref($left)) && $left =~ /^-?\d+(\.\d+)?$/ && $right->{'operand2'} =~ /^-?\d+(\.\d+)?$/) {
-		return {
-			operation	=> '*',
-			operand1	=> ($left * $right->{'operand2'}),
-			operand2	=> $right->{'operand1'}
-		};
-	
-	# (m * x) * n = (o * x) where o = nm
-	} elsif ($tree->{'operation'} eq '*' && ref($left) && $left->{'operation'} eq '*' &&
-	    !(ref($right)) && $right =~ /^-?\d+(\.\d+)?$/ && $left->{'operand1'} =~ /^-?\d+(\.\d+)?$/) {
-		return {
-			operation	=> '*',
-			operand1	=> ($right * $left->{'operand1'}),
-			operand2	=> $right->{'operand2'}
-		};
-	
-	# (x * m) * n = (o * x) where o = nm
-	} elsif ($tree->{'operation'} eq '*' && ref($left) && $left->{'operation'} eq '*' &&
-	    !(ref($right)) && $right =~ /^-?\d+(\.\d+)?$/ && $left->{'operand2'} =~ /^-?\d+(\.\d+)?$/) {
-		return {
-			operation	=> '*',
-			operand1	=> ($right * $left->{'operand2'}),
-			operand2	=> $right->{'operand1'}
-		};
-	}
-	
-	## NATURAL LOGARITHM AND EXPONENTIATION INVERSTION
-	
-	# exp(ln(f(x))) = f(x)
-	if ($tree->{'operation'} =~ /^-?exp$/ && ref($left) && $left->{'operation'} =~ /^ln$/) {
-		if ($tree->{'operation'} =~ /^-/) {
-			return {
-				operation	=> '*',
-				operand1	=> "-1",
-				operand2	=> $left->{'operand1'}
-			};
-		} else {
-			return $left->{'operand1'};
-		}
-	}
-	
-	# ln(exp(f(x))) = f(x)
-	if ($tree->{'operation'} =~ /^-?ln$/ && ref($left) && $left->{'operation'} =~ /^exp$/) {
-		if ($tree->{'operation'} =~ /^-/) {
-			return {
-				operation	=> '*',
-				operand1	=> "-1",
-				operand2	=> $left->{'operand1'}
-			};
-		} else {
-			return $left->{'operand1'};
-		}
-	}
-		
-	## NO SIMPLIFICATION POSSIBLE - BUILD NEW TREE OF SIMPLIFIED SUBTREES
-	
-	# If we get here, just build and return a new tree, which may have no changes.
-	return {
-		operation	=> $tree->{'operation'},
-		operand1	=> $left,
-		operand2	=> $right
-	};
-}
-
-
-# higherPrecedence(a, b) returns true if a has higher or equal precedence than b.
-# ########################################################################################
-sub higherPrecedence {
-	# Get invocant and parameters.
-	my ($self, $a, $b) = @_;
-	
-	# Do precedence check.
-	if ($a eq '^') {
-		return 1;
-	} elsif ($a eq '/' && $b =~ /\/|\*|\+|-/) {
-		return 1;
-	} elsif ($a eq '*' && $b =~ /\*|\+|-/) {
-		return 1;
-	} elsif ($a eq '+' && $b =~ /\+|-/) {
-		return 1;
-	} elsif ($a eq '-' && $b eq '-') {
-		return 1;
-	}
-		
-	# If we get here, precedence is lower.
-	return 0;
-}
-
-
-# isConstant takes a tree and a variable, checks if it's dependent on that variable and
-# returns 1 if so and 0 if not.
-# ########################################################################################
-sub isConstant {
-	# Get invocant, variable and tree.
-	my ($self, $variable, $tree) = @_;
-	
-	# If the tree is undefined, we've run off the end of it, which means it was all constant.
-	return 1 unless defined($tree);
-	
-	# If we have a ref...
-	if (ref $tree) {
-		return ($self->isConstant($variable, $tree->{'operand1'}) && $self->isConstant($variable, $tree->{'operand2'}));
-	} else {
-		# Atom. But is it the variable?
-		return $tree eq $variable || $tree eq "-$variable" ? 0 : 1;
-	}
-}
-
-
-# Numeric Evaluation takes a tree and, provided it is constant and all constants are
-# numeric, calculates the value of the tree. Returns undef if numeric evaluation is
-# not possible.
-# ########################################################################################
-sub numericEvaluation {
-	# Get invocant and tree.
-	my ($self, $tree) = @_;
-	
-	# If the tree is a value...
-	unless (ref $tree) {
-		# If it's numeric, return it.
-		return $tree =~ /^-?\d+(\.\d+)?$/ ? $tree : undef;
-	} else {
-		# Attempt to numerically evaluate each branch.
-		my $leftval = $self->numericEvaluation($tree->{'operand1'});
-		my $rightval = $self->numericEvaluation($tree->{'operand2'});
-		
-		# If it's an addition op and both values are numeric...
-		if ($tree->{'operation'} eq '+' && defined($leftval) && defined($rightval)) {
-			# Add and return.
-			return $leftval + $rightval;
-		
-		# If it's a subtraction op and both values are numeric...
-		} elsif ($tree->{'operation'} eq '-' && defined($leftval) && defined($rightval)) {
-			# Subtract and return.
-			return $leftval - $rightval;
-
-		# If it's a multiplication op and both values are numeric...
-		} elsif ($tree->{'operation'} eq '*' && defined($leftval) && defined($rightval)) {
-			# Multiply and return.
-			return $leftval * $rightval;
-		
-		# If it's a power op and both values are numeric...
-		} elsif ($tree->{'operation'} eq '^' && defined($leftval) && defined($rightval)) {
-			# Multiply and return.
-			return $leftval ^ $rightval;
-		 		# Otherwise, we can't do numerical operations. Return undef.
-		} else {
-			return undef;
-		}
-	}
-}
-
-
-# isIdentical takes two trees and checks if they are identical. Note that identical might
-# not mean equal.
-# ########################################################################################
-sub isIdentical {
-	# Get invocant and trees.
-	my ($self, $treeA, $treeB) = @_;
-	
-	# If both are not references and they are the same...
-	if (!ref($treeA) && !ref($treeB) && $treeA eq $treeB) {
-		return 1;
-	
-	# If they are both references and have the same operators...
-	} elsif (ref($treeA) && ref($treeB) && $treeA->{'operation'} eq $treeB->{'operation'}) {
-		# Recursively compare the subtrees.
-		my $leftcomp = $self->isIdentical($treeA->{'operand1'}, $treeB->{'operand1'});
-		my $rightcomp = $self->isIdentical($treeA->{'operand2'}, $treeB->{'operand2'});
-		return $leftcomp && $rightcomp ? 1 : 0;
-	
-	# Otherwise, they must not be the same.
-	} else {
-		return 0;
-	}
-}
-
-
 1;
-
-
 
 
 

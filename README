@@ -1,4 +1,4 @@
-Math::Calculus::Differentiate version 0.2.1
+Math::Calculus::Differentiate version 0.3.0
 ===========================================
 
 Math::Calculus::Differentiate takes an algebraic expression (e.g. in
@@ -23,7 +23,8 @@ To install this module type the following:
 
 DEPENDENCIES
 
-This module requires Perl 5.6.0 or greater.
+This module requires Perl 5.6.0 or greater and the module
+Math::Calculus::Expression.
 
 COPYRIGHT AND LICENCE
 
